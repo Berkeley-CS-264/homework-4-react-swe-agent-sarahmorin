@@ -1,6 +1,7 @@
 from utils import get_sb_environment
 import subprocess
 import swebench
+import os
 
 class LimitsExceeded(Exception):
     """Raised when the agent has reached its step limit."""
@@ -21,8 +22,8 @@ class SWEEnvironment:
     # -------------------- REQUIRED TOOLS --------------------
     def run_bash_cmd(self, command: str) -> str:
         """
-        Run the command in a bash shell and return the output or throw a ValueError
-        if the process returns non-zero exit code.
+        Run the command in a bash shell and return the output. If the command fails (non-zero exit code),
+        catch the exception and return the partial output.
 
         Args;
             command (str): the shell command to run
@@ -39,9 +40,9 @@ class SWEEnvironment:
                 
         except subprocess.TimeoutExpired as e:
             output = e.output.decode("utf-8", errors="replace") if e.output else ""
-            raise ValueError(output)
+            return f"Command timed out with: {e}.\n\nPartial output:\n{output}"
         except TimeoutError:
-            raise ValueError("TimeoutError")
+            return f"Command time out.\n\nPartial output:\n{output}"
         return output
     
     def generate_patch(self, result: str) -> str:
@@ -65,15 +66,51 @@ class SWEEnvironment:
     # -------------------- TODO(student): add more functions here if you want, not required --------------------
     def replace_in_file(self, file_path: str, from_line: int, to_line: int, content: str) -> str:
         """
-        [Optional] Replace the content of the file from the given line to the given line with the given content
+        Replace the content of the file from lines from_line to to_line with the given content.
+
+        Args:
+            file_path (str): path to the file
+            from_line (int): starting line number (1-indexed)
+            to_line (int): ending line number (1-indexed)
+            content (str): content to replace with
+
+        Returns:
+            The updated content of the file after replacement or a failure message.
         """
-        raise NotImplementedError("replace_in_file must be implemented by the student")
+        if not os.path.isfile(file_path):
+            return f"File not found: {file_path}"
+        try:
+            with open(file_path, 'r') as f:
+                lines = f.readlines()
+            # Adjust for 0-indexing
+            from_idx = max(0, from_line - 1)
+            to_idx = min(len(lines), to_line)
+            # Replace the specified lines
+            new_lines = lines[:from_idx] + [content + '\n'] + lines[to_idx:]
+            with open(file_path, 'w') as f:
+                f.writelines(new_lines)
+            return ''.join(new_lines)
+        except Exception as e:
+            return f"Error replacing content in file {file_path}: {e}"
 
     def show_file(self, file_path: str) -> str:
         """
-        [Optional]Show the content of the file
+        Show the content of the file.
+
+        Args:
+            file_path (str): path to the file
+
+        Returns:
+            The content of the file.
         """
-        raise NotImplementedError("show_file must be implemented by the student")
+        if not os.path.isfile(file_path):
+            return f"File not found: {file_path}"
+        try:
+            with open(file_path, 'r') as f:
+                content = f.read()
+            return content
+        except Exception as e:
+            return f"Error reading file {file_path}: {e}"
 
 class DumbEnvironment:
     """
