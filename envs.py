@@ -63,6 +63,29 @@ class SWEEnvironment:
         except Exception as e:
             return f"{result}\n\nError running git commands: {e}"
 
+    def check_patch(self, result: str) -> bool:
+        """
+        Check for a non-empty patch from the current changes. Used to avoid submitting empty patches.
+
+        Args:
+            result (str): The result string (not used here but kept for consistency)
+        Returns:
+            True if there are changes to be committed, False otherwise.
+        """
+        try:
+            patch_output = self.env.execute("git add -A && git diff --cached")
+            
+            # Handle case where execute returns a dict instead of string
+            if isinstance(patch_output, dict):
+                patch_output = patch_output.get("output", "") or patch_output.get("stdout", "")
+            
+            if patch_output and patch_output.strip():
+                return True
+            else:
+                return False
+        except Exception as e:
+            return False
+
     # -------------------- TODO(student): add more functions here if you want, not required --------------------
     def replace_in_file(self, file_path: str, from_line: int, to_line: int, content: str) -> str:
         """

@@ -18,6 +18,7 @@ from response_parser import ResponseParser
 from llm import LLM, OpenAIModel
 from envs import LimitsExceeded
 import inspect
+import envs
 
 system_prompt = """
     You are a Smart ReAct agent. You will be solving a small software engineering task in Python.
@@ -204,6 +205,7 @@ class ReactAgent:
             except ValueError as e:
                 print(f"Error parsing response: {e}")
                 print(response_text)
+                self.add_message("assistant", response_text)
                 self.add_message("user", f"The previous response could not be parsed. Please use the correct response format:\n{self.parser.response_format}")
                 continue  # Skip to the next iteration if parsing fails
             
@@ -216,16 +218,18 @@ class ReactAgent:
                 # Add the tool result to the message list
                 self.add_message("tool", tool_result)
                 if parsed_response["name"] == "finish":
-                    # If finish was called, return the result
-                    return tool_result
+                    # Make sure we actually generated a pathch before finishing
+                    if envs.check_patch(tool_result):
+                        return tool_result
+                    else:
+                        self.add_message("user", "The generated patch is empty. Please ensure that your code changes are complete and correct before finishing.")
+                        continue
             else:
                 print(f"Warning: Function {parsed_response['name']} not registered in agent")
-                self.add_message("user", f"The function '{parsed_response['name']}' is not recognized. Please use one of the available tools.")
+                self.add_message("user", f"The function '{parsed_response['name']}' is not recognized. Please use one of the available tools described in the system prompt.")
                 continue
-                # raise ValueError(f"Function {parsed_response['name']} not registered in agent")
 
         self.finish("Reached max_steps without calling finish")
-        # raise LimitsExceeded(f"Reached max_steps ({max_steps}) without calling finish")
 
     def message_id_to_context(self, message_id: int) -> str:
         """
