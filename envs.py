@@ -112,6 +112,24 @@ class SWEEnvironment:
         except Exception as e:
             return f"Error reading file {file_path}: {e}"
 
+    def create_file(self, file_path: str, content: str) -> str:
+        """
+        Create a new file with the given content.
+
+        Args:
+            file_path (str): path to the file
+            content (str): content to write to the file
+
+        Returns:
+            A message indicating success or failure.
+        """
+        try:
+            with open(file_path, 'w') as f:
+                f.write(content)
+            return f"File created: {file_path}"
+        except Exception as e:
+            return f"Error creating file {file_path}: {e}"
+
 class DumbEnvironment:
     """
     Dumb environment that just executes the command
