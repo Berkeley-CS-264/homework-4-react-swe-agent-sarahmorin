@@ -1,7 +1,7 @@
 from utils import get_sb_environment
 import subprocess
-import swebench
 import os
+import swebench
 
 class LimitsExceeded(Exception):
     """Raised when the agent has reached its step limit."""
@@ -63,7 +63,7 @@ class SWEEnvironment:
         except Exception as e:
             return f"{result}\n\nError running git commands: {e}"
 
-    def check_patch(self, result: str) -> bool:
+    def check_patch(self) -> bool:
         """
         Check for a non-empty patch from the current changes. Used to avoid submitting empty patches.
 
@@ -91,6 +91,11 @@ class SWEEnvironment:
         """
         Replace the content of the file from lines from_line to to_line with the given content.
 
+        Notes:
+            - Line numbers are 1-indexed (inclusive).
+            - Validates bounds and preserves the rest of the file.
+            - Ensures final file ends with a newline where appropriate.
+
         Args:
             file_path (str): path to the file
             from_line (int): starting line number (1-indexed)
@@ -108,8 +113,14 @@ class SWEEnvironment:
             # Adjust for 0-indexing
             from_idx = max(0, from_line - 1)
             to_idx = min(len(lines), to_line)
+            if from_idx > len(lines) or from_idx < 0:
+                return f"Invalid from_line: {from_line} for file with {len(lines)} lines"
+            if to_idx < from_idx:
+                return f"Invalid range: to_line ({to_line}) must be >= from_line ({from_line})"
             # Replace the specified lines
-            new_lines = lines[:from_idx] + [content + '\n'] + lines[to_idx:]
+            # Normalize content newline
+            replacement = content if content.endswith('\n') else content + '\n'
+            new_lines = lines[:from_idx] + [replacement] + lines[to_idx:]
             with open(file_path, 'w') as f:
                 f.writelines(new_lines)
             return ''.join(new_lines)
@@ -152,6 +163,100 @@ class SWEEnvironment:
             return f"File created: {file_path}"
         except Exception as e:
             return f"Error creating file {file_path}: {e}"
+
+    def append_to_file(self, file_path: str, content: str) -> str:
+        """
+        Append content to the end of a file, creating it if missing.
+
+        Args:
+            file_path (str): path to the file
+            content (str): content to append
+
+        Returns:
+            The updated tail of the file or an error message.
+        """
+        try:
+            os.makedirs(os.path.dirname(file_path) or '.', exist_ok=True)
+            with open(file_path, 'a+') as f:
+                f.write(content)
+            with open(file_path, 'r') as f:
+                tail = f.read()[-5000:]
+            return tail
+        except Exception as e:
+            return f"Error appending to file {file_path}: {e}"
+
+    def list_dir(self, path: str) -> str:
+        """
+        List files and directories in a given directory.
+
+        Note: non-recursive, only returns immediate children.
+
+        Args:
+            path (str): directory to list. Defaults to current directory.
+
+        Returns:
+            A newline-delimited list of files and directories.
+        """
+        try:
+            return '\n'.join(os.listdir(path))
+        except Exception as e:
+            return f"Error listing {path}: {e}"
+
+    def list_python_files(self, path: str = '.') -> str:
+        """
+        List all Python files in a given directory.
+
+        Args:
+            path (str): directory to list. Defaults to current directory.
+
+        Returns:
+            A newline-delimited list of Python files.
+        """
+        try:
+            return '\n'.join(f for f in os.listdir(path) if f.endswith('.py'))
+        except Exception as e:
+            return f"Error listing Python files in {path}: {e}"
+
+    def grep_in_file(self, file_path: str, pattern: str) -> str:
+        """
+        Return lines in a file that match a regex pattern (Python re).
+
+        Args:
+            file_path (str): path to the file
+            pattern (str): Python regex pattern
+
+        Returns:
+            Matching lines with line numbers, or an error message.
+        """
+        import re
+        if not os.path.isfile(file_path):
+            return f"File not found: {file_path}"
+        try:
+            regex = re.compile(pattern)
+            matches = []
+            with open(file_path, 'r') as f:
+                for i, line in enumerate(f, start=1):
+                    if regex.search(line):
+                        matches.append(f"{i}: {line.rstrip()}")
+            return '\n'.join(matches) if matches else ""
+        except Exception as e:
+            return f"Error grepping file {file_path}: {e}"
+
+    def check_python_syntax(self, file_path: str) -> str:
+        """
+        Check Python syntax by attempting to compile the file.
+
+        Returns an empty string if valid; otherwise returns the error message.
+        """
+        if not os.path.isfile(file_path):
+            return f"File not found: {file_path}"
+        try:
+            with open(file_path, 'r') as f:
+                source = f.read()
+            compile(source, file_path, 'exec')
+            return ""
+        except Exception as e:
+            return f"Syntax error in {file_path}: {e}"
 
 class DumbEnvironment:
     """
