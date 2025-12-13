@@ -13,18 +13,18 @@ class ResponseParser:
 
     # Students should include this exact template in the system prompt so the LLM follows it.
     response_format = f"""
-your_thoughts_here
+<your_thoughts_here>
 ...
 {BEGIN_CALL}
-function_name
+<function_name>
 {ARG_SEP}
-arg1_name
+<arg1_name>
 {VALUE_SEP}
-arg1_value (can be multiline)
+<arg1_value (can be multiline)>
 {ARG_SEP}
-arg2_name
+<arg2_name>
 {VALUE_SEP}
-arg2_value (can be multiline)
+<arg2_value (can be multiline)>
 ...
 {END_CALL}
 
