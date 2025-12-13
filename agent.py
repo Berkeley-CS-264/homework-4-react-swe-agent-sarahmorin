@@ -23,58 +23,47 @@ import envs
 system_prompt = """
     You are a Smart ReAct agent. You will be solving a small software engineering task in Python.
     The user will provide you with a task description and source code files.
-    At every step, you MUST think about what to do next and then act by calling one of your available tools.
-    Use the available tools to gather information about the codebase and modify files as needed.
-    The tools you can use are described below, along with their signatures and docstrings.
-    When you have completed the task, you MUST call the `finish` tool with the final result.
-    Every response, including the final result, MUST conform to the response format provided below.
-    Responses that do not follow the format will be rejected.
-    Replace the placeholder text `your_thoughts_here` with your actual thoughts.
-    Similarly, replace `function_name`, `arg1_name`, `arg1_value`, etc. with the actual function name and argument names/values.
-    Your job is to use the tools to debug the codebase and implement the required features to complete the user task.
-    You should not simply describe a proposed solution, YOU MUST IMPLEMENT IT USING THE TOOLS PROVIDED.
 
-    To complete the user task, follow these steps:
+    -- GOALS --
+    - You need to analyze the codebase, identify the changes needed to satisfy the issue in the task, and implement those changes by modifying existing files.
+    - You should not simply describe a proposed solution, YOU MUST IMPLEMENT IT USING THE TOOLS PROVIDED.
 
-    INITIAL SETUP:
-    Begin by performing the following steps once:
-    1. Carefully read the user task and identify the requirements.
-    2. Read and understand the relevant parts of the codebase:
-        - Use `list_python_files` to identify source Python files
-        - Use `show_file` to read file contents
-    3. Analyze the code and identify what changes are needed to fulfill the task.
+    -- METHODS --
+    - At every step, you should REASON about what to do next and then ACT by calling one of your available tools.
+    - The available tools are described below, along with their signatures and docstrings.
+    - To complete the task, you MUST call the `finish` tool with the final result.
 
-    MAIN LOOP:
-    In each iteration of the loop, you should do either make a change with step 4 or test your changes so far with step 5:
-    4. Make the necessary code changes by writing new code or modifying existing code.
-        - Use `replace_in_file` to modify existing files
-        - Use `create_file` to create new files
-    5. Test your changes by running relevant tests or writing new tests.
-        - Use `check_python_syntax` to validate edited Python files
-        - If tests fail or issues arise, REASON about the cause and ACT to fix them.
+    -- RESPONSES --
+    - Every response, including the final result, MUST conform to the response template format provided below.
+    - Responses that do not follow the format will be rejected.
+    - In the response template below:
+        - Lines beginning with "---" are MUST be included exactly as shown in the template.
+        - Lines within <angle_brackets> are placeholders that MUST be replaced with your actual thoughts, function names, and argument values.
+    
+    -- WORKFLOW --
+    1. Start with REASONING about the task and the codebase.
+    2. Use the available tools to gather information and make changes.
+    3. Check your progress by testing your changes.
+    4. Repeat the REASONING and ACTING steps as needed.
+    5. When you have completed the task, call the `finish` tool with the final result.
 
-    COMPLETION:
-    6. Once you have completed the user task, call the finish tool with a summary of the changes you made. Before calling finish, ensure that:
+    Between every reasoning step, the system will execute your chosen tool and provide you with the output in the message history.
+
+    -- COMPLETION --
+    Once you have resolved the user task, call the finish tool with a summary of the changes you made. Before calling finish, ensure that:
         - All code changes are complete and correct.
         - All code changes are made in place in the source files. Simply printing the proposed changes is not sufficient.
         - You have tested your changes and verified that they work as intended.
-    If any of these conditions are not met, continue the MAIN LOOP until they are.
+    If any of these conditions are not met, continue the WORKFLOW until they are.
 
-    ALWAYS follow these rules:
-    - You MUST ALWAYS respond using the specified response format.
-    - You MUST call one tool at a time.
-    - You MUST NOT make up any tools; only use the ones provided.
-    - Use EXACT tool names and argument names as listed in AVAILABLE TOOLS.
-    - Prefer safe code edits using `replace_in_file` rather than printing diffs in reasoning.
-    - You MUST call the `finish` tool when you have completed the task.
-    - You MUST ENSURE that your final code changes are syntactically correct and follow Python conventions. Python is highly sensitive to indentation and syntax errors.
-    - Before calling `finish`, validate edited Python files with `check_python_syntax` and run at least a smoke test via `run_bash_cmd` if feasible.
-    - Do not call tools that are not listed in AVAILABLE TOOLS; such calls will be rejected.
+    -- RULES --
+    YOU MUST ALWAYS FOLLOW THESE RULES:
+    - Respond using the response template defined in `RESPONSE FORMAT` below.
+    - Include your thoughts in every response and a single function call.
+    - Only use the tools provided in `AVAILABLE TOOLS` below.
+    - Call `finish` ONLY when you have completed the task.
     - DO NOT prompt the user for any clarifications or approvals. Work with the information provided. The user is unable to respond during your reasoning and acting process.
-
-    Note: It is possible that you will not be able to complete the task within the given step limit.
-    You should focus on making meaningful progress towards the task at all times.
-    A partial solution is better than no solution.
+    - Focus on making meaningful progress towards completing the task at all times. A partial solution is better than no solution.
 """
 
 class ReactAgent:
@@ -212,8 +201,8 @@ class ReactAgent:
             except ValueError as e:
                 print(f"Error parsing response: {e}")
                 print(response_text)
-                self.add_message("assistant", response_text)
-                self.add_message("user", f"The previous response could not be parsed. Please use the correct response format:\n{self.parser.response_format}")
+                # self.add_message("assistant", response_text)
+                self.add_message("assistant", f"The previous response could not be parsed. The correct response format is:\n{self.parser.response_format}\n\nInvalid response:\n{response_text}")
                 continue  # Skip to the next iteration if parsing fails
             
             # Add the thought message
@@ -225,15 +214,18 @@ class ReactAgent:
                 # Add the tool result to the message list
                 self.add_message("tool", tool_result)
                 if parsed_response["name"] == "finish":
-                    # Make sure we actually generated a pathch before finishing
-                    if envs.check_patch(tool_result):
-                        return tool_result
+                    # Make sure we actually generated a patch before finishing
+                    if "check_patch" in self.function_map:
+                        if self.function_map["check_patch"]():
+                            return tool_result
+                        else:
+                            self.add_message("assistant", "The generated patch is empty. I must ensure code changes are complete and correct before finishing.")
+                            continue
                     else:
-                        self.add_message("user", "The generated patch is empty. Please ensure that your code changes are complete and correct before finishing.")
-                        continue
+                        return tool_result
             else:
                 print(f"Warning: Function {parsed_response['name']} not registered in agent")
-                self.add_message("user", f"The function '{parsed_response['name']}' is not recognized. Please use one of the available tools described in the system prompt.")
+                self.add_message("assistant", f"The previous response called an invalid function: '{parsed_response['name']}'. The available tools are described in the system prompt.\n\nInvalid response:\n{response_text}")
                 continue
 
         self.finish("Reached max_steps without calling finish")
