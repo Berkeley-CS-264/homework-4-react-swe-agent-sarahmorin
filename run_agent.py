@@ -59,6 +59,7 @@ def process_instance(
             env.replace_in_file,
             env.append_to_file,
             env.check_python_syntax,
+            env.check_patch,
             # env.create_file,
         ])
         
